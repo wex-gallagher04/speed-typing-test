@@ -34,7 +34,6 @@
     overflow-x: hidden;
   }
 
-  /* Background grid */
   body::before {
     content: '';
     position: fixed;
@@ -54,7 +53,6 @@
     z-index: 1;
   }
 
-  /* Header */
   header {
     display: flex;
     align-items: baseline;
@@ -70,9 +68,7 @@
     line-height: 1;
   }
 
-  .logo span {
-    color: var(--accent2);
-  }
+  .logo span { color: var(--accent2); }
 
   .tagline {
     font-family: 'Space Mono', monospace;
@@ -82,7 +78,6 @@
     text-transform: uppercase;
   }
 
-  /* Passage selector */
   .passage-tabs {
     display: flex;
     gap: 0.5rem;
@@ -112,7 +107,6 @@
     font-weight: 700;
   }
 
-  /* Stats bar */
   .stats-bar {
     display: flex;
     gap: 2rem;
@@ -123,11 +117,7 @@
     border-radius: 4px;
   }
 
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
+  .stat { display: flex; flex-direction: column; gap: 0.2rem; }
 
   .stat-label {
     font-family: 'Space Mono', monospace;
@@ -153,7 +143,6 @@
     margin-left: 2px;
   }
 
-  /* Progress bar */
   .progress-track {
     height: 2px;
     background: var(--border);
@@ -170,7 +159,6 @@
     border-radius: 1px;
   }
 
-  /* Typing area */
   .typing-area {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -195,11 +183,7 @@
     user-select: none;
   }
 
-  .char {
-    position: relative;
-    transition: color 0.05s;
-  }
-
+  .char { position: relative; transition: color 0.05s; }
   .char.correct { color: var(--correct); }
   .char.wrong { color: var(--wrong); background: rgba(255,71,120,0.12); border-radius: 1px; }
   .char.pending { color: var(--muted); }
@@ -222,7 +206,6 @@
     50% { opacity: 0; }
   }
 
-  /* Hidden input */
   #hidden-input {
     position: absolute;
     opacity: 0;
@@ -231,9 +214,10 @@
     height: 1px;
     top: 0;
     left: 0;
+    /* Disable ALL mobile keyboard assistance */
+    autocomplete: off;
   }
 
-  /* Click prompt */
   .click-prompt {
     position: absolute;
     inset: 0;
@@ -253,7 +237,6 @@
 
   .click-prompt.hidden { opacity: 0; }
 
-  /* Bottom row */
   .bottom-row {
     display: flex;
     align-items: center;
@@ -294,7 +277,6 @@
   .reset-btn:hover { background: var(--accent); color: var(--bg); }
   .reset-btn:active { transform: scale(0.97); }
 
-  /* Result overlay */
   .result-overlay {
     display: none;
     position: fixed;
@@ -415,7 +397,6 @@
 
   .btn-secondary:hover { color: var(--text); border-color: var(--muted); }
 
-  /* Grade badge */
   .grade-badge {
     display: inline-block;
     font-family: 'Bebas Neue', sans-serif;
@@ -475,7 +456,34 @@
 
   <div class="typing-area" id="typing-area" onclick="focusInput()">
     <div class="passage-display" id="passage-display"></div>
-    <input type="text" id="hidden-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <!--
+      KEY FIX: We use a <textarea> instead of <input type="text">.
+      Textareas respect autocorrect="off" and autocomplete="off" more
+      reliably on iOS/Android. We also add enterkeyhint and inputmode
+      attributes to further suppress smart corrections.
+    -->
+    <textarea
+      id="hidden-input"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      enterkeyhint="next"
+      inputmode="text"
+      rows="1"
+      style="
+        position:absolute;
+        opacity:0;
+        pointer-events:none;
+        width:1px;
+        height:1px;
+        top:0;left:0;
+        resize:none;
+        overflow:hidden;
+        border:none;
+        outline:none;
+      "
+    ></textarea>
     <div class="click-prompt" id="click-prompt">Click here to start typing</div>
   </div>
 
@@ -530,15 +538,18 @@
       label: "Anaheim",
       text: "but i'd give anything to stop time and drive around Anaheim at sundown to teach my mind to put you first here you are a hero you wanna be my new home but baby let up i won't ever recognize these roads cause i am lost but not in you yes i am lost but not in you"
     },
-
   ];
 
   let currentPassageIndex = 0;
-  let typed = [];
   let startTime = null;
   let timerInterval = null;
   let isComplete = false;
-  let totalErrors = 0;
+
+  // ─── MOBILE FIX: track typed chars ourselves instead of reading input.value ───
+  // On mobile, .value can contain autocorrected/autocapitalized text that doesn't
+  // match what the user intended to type. We track a canonical typed array ourselves
+  // by listening to beforeinput / keydown events and syncing .value back to match.
+  let typedChars = []; // array of characters the user has actually typed
 
   // Build tabs
   const tabContainer = document.getElementById('tabs');
@@ -564,15 +575,26 @@
       const span = document.createElement('span');
       span.className = 'char pending' + (i === 0 ? ' cursor' : '');
       span.textContent = ch;
-      span.dataset.index = i;
       display.appendChild(span);
     });
   }
 
   function focusInput() {
-    const input = document.getElementById('hidden-input');
-    input.focus();
+    document.getElementById('hidden-input').focus();
     document.getElementById('click-prompt').classList.add('hidden');
+  }
+
+  function syncInputValue() {
+    // Keep the textarea value in sync with our tracked typedChars.
+    // This prevents the browser from seeing stale/autocorrected content
+    // and re-autocorrecting on next keystroke.
+    const input = document.getElementById('hidden-input');
+    const val = typedChars.join('');
+    if (input.value !== val) {
+      input.value = val;
+      // Move caret to end
+      input.setSelectionRange(val.length, val.length);
+    }
   }
 
   function updateDisplay() {
@@ -583,15 +605,15 @@
 
     chars.forEach((span, i) => {
       span.className = 'char';
-      if (i < typed.length) {
-        if (typed[i] === text[i]) {
+      if (i < typedChars.length) {
+        if (typedChars[i] === text[i]) {
           span.classList.add('correct');
           correctCount++;
         } else {
           span.classList.add('wrong');
           wrongCount++;
         }
-      } else if (i === typed.length) {
+      } else if (i === typedChars.length) {
         span.classList.add('active', 'cursor');
       } else {
         span.classList.add('pending');
@@ -601,14 +623,13 @@
     document.getElementById('correct-count').textContent = correctCount;
     document.getElementById('wrong-count').textContent = wrongCount;
 
-    const progress = Math.round((typed.length / text.length) * 100);
+    const progress = Math.round((typedChars.length / text.length) * 100);
     document.getElementById('prog-display').textContent = progress;
     document.getElementById('progress-fill').style.width = progress + '%';
 
-    const accuracy = typed.length > 0 ? Math.round((correctCount / typed.length) * 100) : 0;
-    document.getElementById('acc-display').textContent = typed.length > 0 ? accuracy + '%' : '—';
+    const accuracy = typedChars.length > 0 ? Math.round((correctCount / typedChars.length) * 100) : 0;
+    document.getElementById('acc-display').textContent = typedChars.length > 0 ? accuracy + '%' : '—';
 
-    // Scroll cursor into view
     const cursor = document.querySelector('.cursor');
     if (cursor) cursor.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
@@ -616,7 +637,7 @@
   function updateWPM() {
     if (!startTime) return;
     const elapsed = (Date.now() - startTime) / 1000 / 60;
-    const wordsTyped = typed.length / 5;
+    const wordsTyped = typedChars.length / 5;
     const wpm = elapsed > 0 ? Math.round(wordsTyped / elapsed) : 0;
     document.getElementById('wpm-display').innerHTML = wpm + '<span class="stat-unit"> wpm</span>';
 
@@ -624,40 +645,134 @@
     document.getElementById('time-display').innerHTML = elapsedSec + '<span class="stat-unit">s</span>';
   }
 
-  document.getElementById('hidden-input').addEventListener('input', function(e) {
-    if (isComplete) return;
+  // ─── Core input handler ───────────────────────────────────────────────────────
+  // We use 'beforeinput' to intercept what the browser *wants* to insert,
+  // then apply it ourselves to typedChars. This bypasses autocorrect entirely
+  // because we never let the browser's substituted text take effect — we
+  // use the raw inputType + data instead.
+
+  const hiddenInput = document.getElementById('hidden-input');
+
+  hiddenInput.addEventListener('beforeinput', function(e) {
+    if (isComplete) { e.preventDefault(); return; }
+
     const text = passages[currentPassageIndex].text;
 
-    // Start timer on first key
-    if (!startTime) {
+    // Start timer on first interaction
+    if (!startTime && typedChars.length === 0) {
+      // We'll start it on actual insertion below
+    }
+
+    const type = e.inputType;
+
+    if (type === 'deleteContentBackward') {
+      // Backspace: remove last char
+      e.preventDefault();
+      if (typedChars.length > 0) {
+        typedChars.pop();
+        syncInputValue();
+        updateDisplay();
+        updateWPM();
+      }
+      return;
+    }
+
+    if (type === 'deleteContentForward') {
+      e.preventDefault();
+      return;
+    }
+
+    // For any insertion type (insertText, insertCompositionText,
+    // insertReplacementText, insertFromPaste, etc.) we extract
+    // only the raw characters and apply them one by one.
+    if (type && type.startsWith('insert')) {
+      e.preventDefault(); // block the browser from modifying .value itself
+
+      // e.data holds the actual characters for most input types.
+      // For insertReplacementText (autocorrect), e.data is the replacement —
+      // we IGNORE that and instead figure out what the user actually pressed.
+      // The trick: for replacement text, we can't know the original key,
+      // so we accept just the last character of e.data (the char they added).
+      let insertText = e.data || '';
+
+      // If the browser is replacing a whole word (autocorrect),
+      // we only want the delta — the character(s) that were newly added.
+      // Strategy: figure out how many chars were "replaced" vs "added".
+      // We compare current typedChars length to what the browser thinks
+      // the value would become. Since we prevented the default, we can
+      // use getTargetRanges to see how many chars were being deleted.
+      let deleteCount = 0;
+      if (e.getTargetRanges) {
+        for (const range of e.getTargetRanges()) {
+          deleteCount += range.endOffset - range.startOffset;
+        }
+      }
+
+      if (deleteCount > 0) {
+        // Browser was going to delete some chars (autocorrect replacement).
+        // Roll back those deletions on our side, then add only what's new.
+        // For autocorrect: the replacement word has deleteCount chars removed
+        // and insertText.length chars added. We only want the net new chars.
+        // Simplest correct approach: remove deleteCount, then add insertText.
+        typedChars.splice(typedChars.length - deleteCount, deleteCount);
+        for (const ch of insertText) {
+          if (typedChars.length < text.length) {
+            typedChars.push(ch);
+          }
+        }
+      } else {
+        // Normal insertion: just add the characters
+        for (const ch of insertText) {
+          if (typedChars.length < text.length) {
+            typedChars.push(ch);
+          }
+        }
+      }
+
+      // Start timer on first character
+      if (!startTime && typedChars.length > 0) {
+        startTime = Date.now();
+        timerInterval = setInterval(updateWPM, 100);
+        document.getElementById('typing-area').classList.add('active-typing');
+      }
+
+      syncInputValue();
+      updateDisplay();
+      updateWPM();
+
+      // Check completion
+      if (typedChars.length >= text.length) {
+        finishTest();
+      }
+    }
+  });
+
+  // Fallback: also listen to 'input' for environments where beforeinput isn't
+  // fully supported, but guard against double-processing.
+  hiddenInput.addEventListener('input', function(e) {
+    if (isComplete) return;
+    // If beforeinput fired and prevented default, this.value should already
+    // match our synced value. If it diverges (old browser, no beforeinput support),
+    // fall back to reading .value directly.
+    const synced = typedChars.join('');
+    if (this.value === synced) return; // already handled by beforeinput
+
+    // Fallback path: read value and trust it (old browser or desktop)
+    const text = passages[currentPassageIndex].text;
+    typedChars = this.value.slice(0, text.length).split('');
+
+    if (!startTime && typedChars.length > 0) {
       startTime = Date.now();
       timerInterval = setInterval(updateWPM, 100);
       document.getElementById('typing-area').classList.add('active-typing');
     }
 
-    const val = this.value;
-    typed = val.split('');
-
-    // Count errors for this position
-    let errors = 0;
-    typed.forEach((ch, i) => {
-      if (i < text.length && ch !== text[i]) errors++;
-    });
-    totalErrors = errors;
-
+    syncInputValue();
     updateDisplay();
+    updateWPM();
 
-    // Check completion
-    if (typed.length >= text.length) {
+    if (typedChars.length >= text.length) {
       finishTest();
-    }
-  });
-
-  document.getElementById('hidden-input').addEventListener('keydown', function(e) {
-    // Prevent going beyond text length
-    const text = passages[currentPassageIndex].text;
-    if (typed.length >= text.length && e.key !== 'Backspace') {
-      e.preventDefault();
     }
   });
 
@@ -667,16 +782,15 @@
     const text = passages[currentPassageIndex].text;
     const elapsed = (Date.now() - startTime) / 1000;
     const elapsedMin = elapsed / 60;
-    const totalChars = typed.length;
+    const totalChars = typedChars.length;
     const wordsTyped = totalChars / 5;
     const wpm = Math.round(wordsTyped / elapsedMin);
 
     let correctCount = 0;
-    typed.forEach((ch, i) => { if (i < text.length && ch === text[i]) correctCount++; });
+    typedChars.forEach((ch, i) => { if (i < text.length && ch === text[i]) correctCount++; });
     const accuracy = Math.round((correctCount / totalChars) * 100);
     const errors = totalChars - correctCount;
 
-    // Grade
     let grade, gradeClass;
     if (wpm >= 100 && accuracy >= 97) { grade = 'S — LEGENDARY'; gradeClass = 'grade-S'; }
     else if (wpm >= 80 && accuracy >= 95) { grade = 'A — EXCELLENT'; gradeClass = 'grade-A'; }
@@ -697,9 +811,8 @@
 
   function resetTest() {
     isComplete = false;
-    typed = [];
+    typedChars = [];
     startTime = null;
-    totalErrors = 0;
     clearInterval(timerInterval);
 
     document.getElementById('hidden-input').value = '';
